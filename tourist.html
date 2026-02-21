@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>観光客用 駐車場マップ</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<style>
+body{
+  font-size:20px;
+  padding:15px;
+  background:#f7f7f7;
+}
+#map{
+  height:500px;
+}
+button{
+  font-size:18px;
+  padding:8px;
+  margin-top:8px;
+}
+
+   h2 {
+     display: flex;
+     align-items: center;
+     justify-content: center;
+     gap: 8px;
+     font-size: 28px;
+   }
+
+   h2 i {
+     width: 32px;
+     height: 32px;
+   }
+
+</style>
+</head>
+<body>
+
+    <h2>
+     <i data-lucide="circle-parking"></i>
+     まちごと駐車場
+   </h2>
+
+  <script src="https://unpkg.com/lucide@latest"></script>  <!-- アイコンライブラリ -->
+  <script>lucide.createIcons();</script>
+
+<div id="currentParking" style="padding:15px; background:#f5f5f5; margin:10px;">
+  <h3>現在利用中の駐車場</h3>
+  <div id="currentInfo">利用中の駐車場はありません</div>
+  <div id="miniMap" style="height:200px; margin-top:10px; display:none;"></div>
+</div>
+
+<h2>利用可能な駐車場</h2>
+
+<div id="map"></div>
+
+<script>
+
+/* ==============================
+   Supabase 初期化
+============================== */
+const sb = window.supabase.createClient(
+  "https://zyvpzobykvuscxuhsrad.supabase.co",
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5dnB6b2J5a3Z1c2N4dWhzcmFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3OTE0NTAsImV4cCI6MjA4NTM2NzQ1MH0.Z2cKv3VSlk3iibQl7ldwcff9WF5cBHTZkcrdvxA2Bbk"
+);
+
+let miniMap = null;
+let miniMarker = null;
+
+/* ==============================
+   地図初期化
+============================== */
+let map = L.map('map').setView([35.0,135.0],14);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  attribution:'© OpenStreetMap'
+}).addTo(map);
+
+let markerGroup = L.layerGroup().addTo(map);
+
+/* ==============================
+   駐車場データ取得
+============================== */
+async function loadParking(){
+
+  markerGroup.clearLayers();
+
+  const { data, error } = await sb
+    .from("parking_spaces")
+    .select("*")
+    .eq("is_available",true);
+
+  if(error){
+    console.log(error);
+    return;
+  }
+
+  const markers = [];
+
+  data.forEach(space=>{
+
+    const marker = L.marker([space.latitude,space.longitude]);
+
+    marker.bindPopup(`
+      <h3>${space.title}</h3>
+      <p style="color:red; font-size:18px; font-weight:bold;">
+        ${space.price} 円
+      </p>
+      <button onclick="useParking('${space.id}')">
+        到着・利用する
+      </button>
+    `);
+
+    markerGroup.addLayer(marker);  // ← これ必須
+
+    markers.push(marker);
+  });
+
+  if (markers.length > 0) {
+    const group = L.featureGroup(markers);
+    map.fitBounds(group.getBounds());
+  }
+}
+
+loadParking();
+
+/* ==============================
+   利用ボタン
+============================== */
+async function useParking(id){
+
+  const { data: space } = await sb
+    .from("parking_spaces")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  // 利用履歴追加
+  await sb.from("parking_usage").insert({
+    parking_id: id
+  });
+
+  // 空き状態を false にする
+  await sb
+    .from("parking_spaces")
+    .update({ is_available:false })
+    .eq("id",id);
+
+  // 画面に表示
+  document.getElementById("currentInfo").innerHTML = `
+    <h4>${space.title}</h4>
+    <p style="font-size:18px; color:red;">
+      ${space.price} 円
+    </p>
+    <button onclick="cancelParking('${id}')">
+      キャンセルする
+    </button>
+  `;
+
+    // 小マップ表示
+  const miniMapDiv = document.getElementById("miniMap");
+  miniMapDiv.style.display = "block";
+
+  // 既存マップ破棄
+  if(miniMap){
+    miniMap.remove();
+  }
+
+  miniMap = L.map('miniMap').setView(
+    [space.latitude, space.longitude], 
+    17
+  );
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    attribution:'© OpenStreetMap'
+  }).addTo(miniMap);
+
+  miniMarker = L.marker([space.latitude, space.longitude])
+    .addTo(miniMap);
+
+  loadParking();
+}
+
+/* ==============================
+   キャンセル処理
+============================== */
+async function cancelParking(id){
+
+  // 空きに戻す
+  await sb
+    .from("parking_spaces")
+    .update({ is_available:true })
+    .eq("id",id);
+
+  // 利用履歴を削除（最後の1件）
+  await sb
+    .from("parking_usage")
+    .delete()
+    .eq("parking_id", id)
+    .order("used_at", { ascending:false })
+    .limit(1);
+
+  document.getElementById("currentInfo").innerHTML =
+    "利用中の駐車場はありません";
+
+  loadParking();
+}
+
+</script>
+</body>
+</html>
