@@ -260,75 +260,100 @@
     ============================== */
 
     document
-      .getElementById("saveBtn")
-      .addEventListener("click", async () => {
+  .getElementById("saveBtn")
+  .addEventListener("click", async () => {
 
-        if (!lat) {
-          alert("先に位置を取得してください");
-          return;
-        }
+    if (!lat) {
+      alert("先に位置を取得してください");
+      return;
+    }
 
-        const title = document.getElementById("title").value;
-        const file = document.getElementById("imageInput").files[0];
+    const title = document.getElementById("title").value;
+    const file = document.getElementById("imageInput").files[0];
 
-        let imageUrl = null;
+    let imageUrl = null;
 
-        /* 画像をSupabase Storageへ保存 */
-      if (file) {
+    /* 画像をSupabase Storageへ保存 */
+    if (file) {
+      const fileName = Date.now() + "_" + file.name;
+      const compressedFile = await compressImage(file);
 
-        const fileName = Date.now() + "_" + file.name;
+      const { error: uploadError } = await sb
+        .storage
+        .from("parking-images")
+        .upload(fileName, compressedFile);
 
-        const compressedFile = await compressImage(file);
-
-        const { error: uploadError } = await sb
-          .storage
-          .from("parking-images")
-          .upload(fileName, compressedFile);
-
-        if (uploadError) {
-          alert("画像保存失敗");
-          return;
-        }
-
-        const { data } = sb
-          .storage
-          .from("parking-images")
-          .getPublicUrl(fileName);
-
-        imageUrl = data.publicUrl;
-      }
-
-      const priceInput = document.getElementById("price").value.trim();
-      const price = priceInput === "" ? null : Number(priceInput);
-
-      if (price !== null && isNaN(price)) {
-        alert("料金は数字で入力してください");
+      if (uploadError) {
+        alert("画像保存失敗");
         return;
       }
 
-      const commentInput = document.getElementById("comment").value.trim();
-      const comment = commentInput === "" ? null : commentInput;
+      const { data } = sb
+        .storage
+        .from("parking-images")
+        .getPublicUrl(fileName);
 
-        /* DB保存 */
-        const { error } = await sb
-          .from("parking_spaces")
-          .insert({
-            title,
-            latitude: lat,
-            longitude: lng,
-            image_url: imageUrl,
-            price,
-            comment
-          });
+      imageUrl = data.publicUrl;
+    }
 
-        if (error) {
-          console.log(error);
-          alert("保存失敗");
-        } else {
-          alert("保存成功");
-        }
+    const priceInput = document.getElementById("price").value.trim();
+    const price = priceInput === "" ? null : Number(priceInput);
 
+    if (price !== null && isNaN(price)) {
+      alert("料金は数字で入力してください");
+      return;
+    }
+
+    const commentInput = document.getElementById("comment").value.trim();
+    const comment = commentInput === "" ? null : commentInput;
+
+    /* DB保存 */
+    const { error } = await sb
+      .from("parking_spaces")
+      .insert({
+        title,
+        latitude: lat,
+        longitude: lng,
+        image_url: imageUrl,
+        price,
+        comment
       });
+
+    if (error) {
+      console.log(error);
+      alert("保存失敗");
+    } else {
+      alert("保存成功");
+
+      // ==============================
+      // 保存後リセット処理
+      // ==============================
+
+      // 入力フォームをクリア
+      document.getElementById("title").value = "";
+      document.getElementById("imageInput").value = "";
+      document.getElementById("previewImage").src = "";
+      document.getElementById("previewImage").style.display = "none";
+      document.getElementById("price").value = "";
+      document.getElementById("comment").value = "";
+
+      // 座標表示リセット
+      lat = null;
+      lng = null;
+      document.getElementById("latDisplay").textContent = "緯度: --";
+      document.getElementById("lngDisplay").textContent = "経度: --";
+
+      // マーカー削除
+      if (marker) {
+        map.removeLayer(marker);
+        marker = null;
+      }
+
+      // 地図を初期位置に戻す
+      map.setView([34.455339, 131.764480], 14);
+    }
+
+  });
 
   </script>
 
