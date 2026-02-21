@@ -68,6 +68,12 @@ const sb = window.supabase.createClient(
 let miniMap = null;
 let miniMarker = null;
 
+// 選択中の駐車場ID
+let currentSelectedId = null;
+
+// マップ全体を白くするオーバーレイヤー
+let overlayLayer = null;
+
 let map = L.map('map').setView([35.0,135.0],14);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
@@ -117,19 +123,26 @@ async function loadParking(){
 loadParking();
 
 async function useParking(id){
+  // 1つしか選択できない
+  if(currentSelectedId) return;
+  currentSelectedId = id;
+
   const { data: space } = await sb
     .from("parking_spaces")
     .select("*")
     .eq("id", id)
     .single();
 
+  // 利用履歴追加
   await sb.from("parking_usage").insert({ parking_id: id });
 
+  // 空き状態を false にする
   await sb
     .from("parking_spaces")
     .update({ is_available:false })
     .eq("id",id);
 
+  // 利用中表示
   document.getElementById("currentInfo").innerHTML = `
     <h4>${space.title}</h4>
     <p style="font-size:18px; color:red;">
@@ -143,6 +156,7 @@ async function useParking(id){
     </button>
   `;
 
+  // 小マップ表示
   const miniMapDiv = document.getElementById("miniMap");
   miniMapDiv.style.display = "block";
 
@@ -162,15 +176,38 @@ async function useParking(id){
   miniMarker = L.marker([space.latitude, space.longitude])
     .addTo(miniMap);
 
+  // ==========================
+  // マップ全体を白くするオーバーレイヤー
+  // ==========================
+  const bounds = map.getBounds();
+  overlayLayer = L.rectangle(bounds, {
+    color: '#ffffff',
+    weight: 0,
+    fillOpacity: 0.7, // 白の濃さ
+    interactive: false
+  }).addTo(map);
+
+  // 選択駐車場だけ前面に出す
+  markerGroup.eachLayer(marker=>{
+    if(marker.getLatLng().lat === space.latitude && marker.getLatLng().lng === space.longitude){
+      marker.setZIndexOffset(1000);
+      marker.openPopup();
+    }
+  });
+
   loadParking();
 }
 
 async function cancelParking(id){
+  currentSelectedId = null;
+
+  // 空きに戻す
   await sb
     .from("parking_spaces")
     .update({ is_available:true })
     .eq("id",id);
 
+  // 利用履歴削除（最後の1件）
   await sb
     .from("parking_usage")
     .delete()
@@ -178,8 +215,22 @@ async function cancelParking(id){
     .order("used_at", { ascending:false })
     .limit(1);
 
+  // 画面表示初期化
   document.getElementById("currentInfo").innerHTML =
     "利用中の駐車場はありません";
+
+  // 小マップ破棄
+  if(miniMap){
+    miniMap.remove();
+    miniMap = null;
+  }
+  document.getElementById("miniMap").style.display = "none";
+
+  // マップの白オーバーレイヤー削除
+  if(overlayLayer){
+    overlayLayer.remove();
+    overlayLayer = null;
+  }
 
   loadParking();
 }
@@ -191,7 +242,6 @@ function openGoogleMap(lat, lng){
   const url = `https://www.google.com/maps?q=${lat},${lng}`;
   window.open(url, "_blank");
 }
-
 </script>
 </body>
 </html>
