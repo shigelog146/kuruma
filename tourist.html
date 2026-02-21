@@ -100,15 +100,31 @@ async function loadParking(){
   data.forEach(space=>{
     const marker = L.marker([space.latitude,space.longitude]);
 
-    marker.bindPopup(`
-      <h3>${space.title}</h3>
-      <p style="color:red; font-size:18px; font-weight:bold;">
-        ${space.price} 円
-      </p>
-      <button onclick="useParking('${space.id}')">
-        到着・利用する
-      </button>
-    `);
+marker.bindPopup(`
+  <div style="font-family: 'Segoe UI', sans-serif; padding: 10px; max-width: 250px;">
+    <h3 style="margin: 0 0 8px; font-size: 28px; color: #2c3e50;">
+      ${space.title}
+    </h3>
+    <p style="margin: 0 0 12px; color: #e74c3c; font-size: 28px; font-weight: bold;">
+      ￥${space.price.toLocaleString()} / 利用
+    </p>
+    <button 
+      onclick="useParking('${space.id}')" 
+      style="
+        background-color: #3498db;
+        color: white;
+        border: none;
+        padding: 8px 12px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 24px;
+      "
+    >
+      <i data-lucide="circle-parking"></i> 到着・利用する
+    </button>
+  </div>
+`);
+
 
     markerGroup.addLayer(marker);
     markers.push(marker);
