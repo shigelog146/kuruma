@@ -25,30 +25,29 @@ button{
   margin-top:8px;
 }
 
-   h2 {
-     display: flex;
-     align-items: center;
-     justify-content: center;
-     gap: 8px;
-     font-size: 28px;
-   }
+h2 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 28px;
+}
 
-   h2 i {
-     width: 32px;
-     height: 32px;
-   }
-
+h2 i {
+  width: 32px;
+  height: 32px;
+}
 </style>
 </head>
 <body>
 
-    <h2>
-     <i data-lucide="circle-parking"></i>
-     まちごと駐車場
-   </h2>
+<h2>
+ <i data-lucide="circle-parking"></i>
+ まちごと駐車場
+</h2>
 
-  <script src="https://unpkg.com/lucide@latest"></script>  <!-- アイコンライブラリ -->
-  <script>lucide.createIcons();</script>
+<script src="https://unpkg.com/lucide@latest"></script>  
+<script>lucide.createIcons();</script>
 
 <div id="currentParking" style="padding:15px; background:#f5f5f5; margin:10px;">
   <h3>現在利用中の駐車場</h3>
@@ -61,10 +60,6 @@ button{
 <div id="map"></div>
 
 <script>
-
-/* ==============================
-   Supabase 初期化
-============================== */
 const sb = window.supabase.createClient(
   "https://zyvpzobykvuscxuhsrad.supabase.co",
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5dnB6b2J5a3Z1c2N4dWhzcmFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3OTE0NTAsImV4cCI6MjA4NTM2NzQ1MH0.Z2cKv3VSlk3iibQl7ldwcff9WF5cBHTZkcrdvxA2Bbk"
@@ -73,9 +68,6 @@ const sb = window.supabase.createClient(
 let miniMap = null;
 let miniMarker = null;
 
-/* ==============================
-   地図初期化
-============================== */
 let map = L.map('map').setView([35.0,135.0],14);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
@@ -84,11 +76,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
 
 let markerGroup = L.layerGroup().addTo(map);
 
-/* ==============================
-   駐車場データ取得
-============================== */
 async function loadParking(){
-
   markerGroup.clearLayers();
 
   const { data, error } = await sb
@@ -104,7 +92,6 @@ async function loadParking(){
   const markers = [];
 
   data.forEach(space=>{
-
     const marker = L.marker([space.latitude,space.longitude]);
 
     marker.bindPopup(`
@@ -117,8 +104,7 @@ async function loadParking(){
       </button>
     `);
 
-    markerGroup.addLayer(marker);  // ← これ必須
-
+    markerGroup.addLayer(marker);
     markers.push(marker);
   });
 
@@ -130,29 +116,20 @@ async function loadParking(){
 
 loadParking();
 
-/* ==============================
-   利用ボタン
-============================== */
 async function useParking(id){
-
   const { data: space } = await sb
     .from("parking_spaces")
     .select("*")
     .eq("id", id)
     .single();
 
-  // 利用履歴追加
-  await sb.from("parking_usage").insert({
-    parking_id: id
-  });
+  await sb.from("parking_usage").insert({ parking_id: id });
 
-  // 空き状態を false にする
   await sb
     .from("parking_spaces")
     .update({ is_available:false })
     .eq("id",id);
 
-  // 画面に表示
   document.getElementById("currentInfo").innerHTML = `
     <h4>${space.title}</h4>
     <p style="font-size:18px; color:red;">
@@ -161,13 +138,14 @@ async function useParking(id){
     <button onclick="cancelParking('${id}')">
       キャンセルする
     </button>
+    <button onclick="openGoogleMap(${space.latitude}, ${space.longitude})">
+      Googleマップで開く
+    </button>
   `;
 
-    // 小マップ表示
   const miniMapDiv = document.getElementById("miniMap");
   miniMapDiv.style.display = "block";
 
-  // 既存マップ破棄
   if(miniMap){
     miniMap.remove();
   }
@@ -187,18 +165,12 @@ async function useParking(id){
   loadParking();
 }
 
-/* ==============================
-   キャンセル処理
-============================== */
 async function cancelParking(id){
-
-  // 空きに戻す
   await sb
     .from("parking_spaces")
     .update({ is_available:true })
     .eq("id",id);
 
-  // 利用履歴を削除（最後の1件）
   await sb
     .from("parking_usage")
     .delete()
@@ -210,6 +182,14 @@ async function cancelParking(id){
     "利用中の駐車場はありません";
 
   loadParking();
+}
+
+// ==============================
+// Googleマップを新しいタブで開く
+// ==============================
+function openGoogleMap(lat, lng){
+  const url = `https://www.google.com/maps?q=${lat},${lng}`;
+  window.open(url, "_blank");
 }
 
 </script>
