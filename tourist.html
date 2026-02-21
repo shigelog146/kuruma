@@ -37,6 +37,16 @@ h2 i {
   width: 32px;
   height: 32px;
 }
+
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  box-shadow: none; 
+  background-color: #fefefe; 
+  border: 1px solid #7293a8;
+  border-radius: 0 !important;
+}
+
+
 </style>
 </head>
 <body>
@@ -106,25 +116,29 @@ marker.bindPopup(`
       ${space.title}
     </h3>
     <p style="margin: 0 0 12px; color: #e74c3c; font-size: 28px; font-weight: bold;">
-      ￥${space.price.toLocaleString()} / 利用
+      ￥${space.price.toLocaleString()} / 1日利用
     </p>
-    <button 
-      onclick="useParking('${space.id}')" 
-      style="
-        background-color: #3498db;
-        color: white;
-        border: none;
-        padding: 8px 12px;
-        border-radius: 5px;
-        cursor: pointer;
-        font-size: 24px;
-      "
-    >
-      <i data-lucide="circle-parking"></i> 到着・利用する
-    </button>
+    <div style="text-align: center;">
+      <button 
+        onclick="useParking('${space.id}')" 
+        style="
+          background-color: #7293a8;
+          color: white;
+          border: none;
+          padding: 8px 12px;
+          border-radius: 0;
+          cursor: pointer;
+          font-size: 24px;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+        "
+      >
+        利用する
+      </button>
+    </div>
   </div>
 `);
-
 
     markerGroup.addLayer(marker);
     markers.push(marker);
@@ -258,6 +272,7 @@ function openGoogleMap(lat, lng){
   const url = `https://www.google.com/maps?q=${lat},${lng}`;
   window.open(url, "_blank");
 }
+
 </script>
 </body>
 </html>
