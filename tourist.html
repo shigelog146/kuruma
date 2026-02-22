@@ -1,218 +1,373 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<title>観光客用 駐車場マップ</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8">
+  <title>観光客用 駐車場マップ</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Supabase -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
-<style>
-body{
-  font-size:20px;
-  padding:15px;
-  background:#f7f7f7;
-}
-#map{
-  height:500px;
-}
-button{
-  font-size:18px;
-  padding:8px;
-  margin-top:8px;
-}
+  <style>
+    /* ==============================
+       基本スタイル
+    ============================== */
+    body{
+      font-size:20px;
+      padding:15px;
+      background:#f7f7f7;
+    }
 
-h2 {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  font-size: 28px;
-}
+    #map{
+      height:500px;
+    }
 
-h2 i {
-  width: 32px;
-  height: 32px;
-}
+    button{
+      font-size:18px;
+      padding:8px;
+      margin-top:8px;
+    }
 
-.leaflet-popup-content-wrapper,
-.leaflet-popup-tip {
-  box-shadow: none; 
-  background-color: #fefefe; 
-  border: 1px solid #7293a8;
-  border-radius: 0 !important;
-}
+    h2 {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 28px;
+    }
 
+    h2 i {
+      width: 32px;
+      height: 32px;
+    }
 
-</style>
+    /* Leafletポップアップのデザイン調整 */
+    .leaflet-popup-content-wrapper,
+    .leaflet-popup-tip {
+      box-shadow: none; 
+      background-color: #fefefe; 
+      border: 1px solid #7293a8;
+      border-radius: 0 !important;
+    }
+  </style>
 </head>
+
 <body>
 
-<h2>
- <i data-lucide="circle-parking"></i>
- まちごと駐車場
-</h2>
+  <!-- ==============================
+       タイトル表示
+  ============================== -->
+  <h2>
+    <i data-lucide="circle-parking"></i>
+    まちごと駐車場
+  </h2>
 
-<script src="https://unpkg.com/lucide@latest"></script>  
-<script>lucide.createIcons();</script>
+  <!-- Lucideアイコン -->
+  <script src="https://unpkg.com/lucide@latest"></script>  
+  <script>
+    lucide.createIcons();
+  </script>
 
-<div id="currentParking" style="padding:15px; background:#f5f5f5; margin:10px;">
-  <h3>現在利用中の駐車場</h3>
-  <div id="currentInfo">利用中の駐車場はありません</div>
-  <div id="miniMap" style="height:200px; margin-top:10px; display:none;"></div>
-</div>
+  <!-- ==============================
+       現在利用中の駐車場エリア
+  ============================== -->
+  <div id="currentParking" style="padding:15px; background:#f5f5f5; margin:10px;">
+    <h3>現在利用中の駐車場</h3>
+    <div id="currentInfo">利用中の駐車場はありません</div>
+    <div id="miniMap" style="height:200px; margin-top:10px; display:none;"></div>
+  </div>
 
-<h2>利用可能な駐車場</h2>
+  <h2>利用可能な駐車場</h2>
 
-<div id="map"></div>
+  <!-- メインマップ -->
+  <div id="map"></div>
 
 <script>
-const sb = window.supabase.createClient(
-  "https://zyvpzobykvuscxuhsrad.supabase.co",
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5dnB6b2J5a3Z1c2N4dWhzcmFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3OTE0NTAsImV4cCI6MjA4NTM2NzQ1MH0.Z2cKv3VSlk3iibQl7ldwcff9WF5cBHTZkcrdvxA2Bbk"
-);
 
-let miniMap = null;
-let miniMarker = null;
+  /* ==============================
+     Supabase接続
+  ============================== */
+  const sb = window.supabase.createClient(
+    "https://zyvpzobykvuscxuhsrad.supabase.co",
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5dnB6b2J5a3Z1c2N4dWhzcmFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3OTE0NTAsImV4cCI6MjA4NTM2NzQ1MH0.Z2cKv3VSlk3iibQl7ldwcff9WF5cBHTZkcrdvxA2Bbk"
+  );
 
-// 選択中の駐車場ID
-let currentSelectedId = null;
+  /* ==============================
+     グローバル変数
+  ============================== */
+  let miniMap = null;
+  let miniMarker = null;
 
-// マップ全体を白くするオーバーレイヤー
-let overlayLayer = null;
+  // 自分専用ID（リロードしても保持）
+  let myUserId = localStorage.getItem("myParkingUserId");
 
-let map = L.map('map').setView([35.0,135.0],14);
-
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-  attribution:'© OpenStreetMap'
-}).addTo(map);
-
-let markerGroup = L.layerGroup().addTo(map);
-
-async function loadParking(){
-  markerGroup.clearLayers();
-
-  const { data, error } = await sb
-    .from("parking_spaces")
-    .select("*")
-    .eq("is_available",true);
-
-  if(error){
-    console.log(error);
-    return;
+  if(!myUserId){
+    myUserId = crypto.randomUUID();
+    localStorage.setItem("myParkingUserId", myUserId);
   }
 
-  const markers = [];
+  console.log("自分のID:", myUserId);
 
-  data.forEach(space=>{
-    const marker = L.marker([space.latitude,space.longitude]);
+  // 選択中の駐車場ID
+  let currentSelectedId = null;
 
-marker.bindPopup(`
+  // マップ全体を白くするオーバーレイヤー
+  let overlayLayer = null;
+
+  /* ==============================
+     メインマップ初期化
+  ============================== */
+  let map = L.map('map').setView([35.0,135.0],14);
+
+  L.tileLayer(
+    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    { attribution:'© OpenStreetMap' }
+  ).addTo(map);
+
+  let markerGroup = L.layerGroup().addTo(map);
+
+  /* ==============================
+     駐車場データ読み込み
+  ============================== */
+  async function loadParking(){
+
+    markerGroup.clearLayers();
+
+    // ① 全件取得
+    const { data, error } = await sb
+      .from("parking_spaces")
+      .select("*");
+
+    if(error){
+      console.log(error);
+      return;
+    }
+
+    const markers = [];
+    let myParking = null;
+
+    // ② 表示ロジック
+    data.forEach(space=>{
+
+      // 自分が借りているか確認
+      if(space.rented_by === myUserId){
+        myParking = space;
+      }
+
+      // 他人利用中は非表示
+      if(!space.is_available && space.rented_by !== myUserId){
+        return;
+      }
+
+      const marker = L.marker([space.latitude,space.longitude]);
+
+      // ポップアップ生成
+      marker.bindPopup(`
   <div style="font-family: 'Segoe UI', sans-serif; padding: 10px; max-width: 250px;">
+    
     <h3 style="margin: 0 0 8px; font-size: 28px; color: #2c3e50;">
       ${space.title}
     </h3>
+
     <p style="margin: 0 0 12px; color: #e74c3c; font-size: 28px; font-weight: bold;">
       ￥${space.price.toLocaleString()} / 1日利用
     </p>
+
     <div style="text-align: center;">
-      <button 
-        onclick="useParking('${space.id}')" 
-        style="
-          background-color: #7293a8;
-          color: white;
-          border: none;
-          padding: 8px 12px;
-          border-radius: 0;
-          cursor: pointer;
-          font-size: 24px;
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-        "
-      >
-        利用する
-      </button>
+
+      ${space.is_available ? `
+        <!-- 空いている場合 -->
+        <button 
+          onclick="useParking('${space.id}')"
+          style="
+            background-color: #7293a8;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 0;
+            cursor: pointer;
+            font-size: 24px;
+          "
+        >
+          利用する
+        </button>
+      ` : `
+        <!-- 自分が利用中の場合 -->
+        <button 
+          onclick="cancelParking('${space.id}')"
+          style="
+            background-color: #e74c3c;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 0;
+            cursor: pointer;
+            font-size: 24px;
+          "
+        >
+          キャンセルする
+        </button>
+      `}
     </div>
   </div>
 `);
 
-    markerGroup.addLayer(marker);
-    markers.push(marker);
-  });
+      markerGroup.addLayer(marker);
+      markers.push(marker);
+    });
 
-  if (markers.length > 0) {
-    const group = L.featureGroup(markers);
-    map.fitBounds(group.getBounds());
-  }
-}
-
-loadParking();
-
-// ==============================
-// Realtime購読（ここだけ）
-// ==============================
-sb.channel('parking-channel')
-  .on(
-    'postgres_changes',
-    {
-      event: 'UPDATE',
-      schema: 'public',
-      table: 'parking_spaces'
-    },
-    (payload) => {
-
-      const newRow = payload.new;
-
-      // 他人が利用したときだけ再描画
-      if(newRow.is_available === false){
-
-        // 自分が選択中のIDなら無視
-        if(currentSelectedId === newRow.id) return;
-
-        loadParking();
-      }
-
-      // キャンセル時
-      if(newRow.is_available === true){
-        loadParking();
-      }
-
+    // ③ 地図ズーム調整
+    if(markers.length > 0){
+      const group = L.featureGroup(markers);
+      map.fitBounds(group.getBounds());
     }
-  )
-  .subscribe();
 
-async function useParking(id){
+    // ④ 自分の駐車場復元
+    if(myParking){
 
-  if(currentSelectedId) return;
+      currentSelectedId = myParking.id;
 
-  // ★ 原子的更新
-  const { data, error } = await sb
-    .from("parking_spaces")
-    .update({ is_available: false })
-    .eq("id", id)
-    .eq("is_available", true)
-    .select();
+      document.getElementById("currentInfo").innerHTML = `
+    <div style="font-family:sans-serif;">
+      
+      <h4 style="margin-bottom:8px;">
+        ${myParking.title}
+      </h4>
 
-  if(error || !data || data.length === 0){
-    alert("すでに利用されています");
-    loadParking();
-    return;
+      ${myParking.image_url ? `
+        <img 
+          src="${myParking.image_url}" 
+          style="
+            width:100%;
+            max-height:200px;
+            height:180px;
+            object-fit:contain;
+            margin-bottom:10px;
+            border:1px solid #ccc;
+            background:#fff;
+          "
+        >
+      ` : ""}
+
+      <p style="font-size:18px; color:red; margin:5px 0;">
+        ${myParking.price} 円
+      </p>
+
+      <button onclick="cancelParking('${myParking.id}')">
+        キャンセルする
+      </button>
+
+      <button onclick="openGoogleMap(${myParking.latitude}, ${myParking.longitude})">
+        Googleマップで開く
+      </button>
+
+    </div>
+    `;
+
+      const miniMapDiv = document.getElementById("miniMap");
+      miniMapDiv.style.display = "block";
+
+      if(miniMap){
+        miniMap.remove();
+      }
+
+      miniMap = L.map('miniMap').setView(
+        [myParking.latitude, myParking.longitude],
+        17
+      );
+
+      L.tileLayer(
+        'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        { attribution:'© OpenStreetMap' }
+      ).addTo(miniMap);
+
+      miniMarker = L.marker([
+        myParking.latitude,
+        myParking.longitude
+      ]).addTo(miniMap);
+
+    } else {
+
+      currentSelectedId = null;
+
+      document.getElementById("currentInfo").innerHTML =
+        "利用中の駐車場はありません";
+
+      if(miniMap){
+        miniMap.remove();
+        miniMap = null;
+      }
+
+      document.getElementById("miniMap").style.display = "none";
+    }
   }
 
-  currentSelectedId = id;
+  // 初期読み込み
+  loadParking();
 
-  const space = data[0];
+  /* ==============================
+     Realtime購読
+  ============================== */
+  sb.channel('parking-channel')
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'parking_spaces'
+      },
+      (payload) => {
 
-  await sb.from("parking_usage").insert({
-    parking_id: id
-  });
+        const newRow = payload.new;
 
-  // 利用中表示
-  document.getElementById("currentInfo").innerHTML = `
+        if(newRow.is_available === false){
+          if(currentSelectedId === newRow.id) return;
+          loadParking();
+        }
+
+        if(newRow.is_available === true){
+          loadParking();
+        }
+      }
+    )
+    .subscribe();
+
+  /* ==============================
+     利用処理
+  ============================== */
+  async function useParking(id){
+
+    if(currentSelectedId) return;
+
+    const { data, error } = await sb
+      .from("parking_spaces")
+      .update({
+        is_available: false,
+        rented_by: myUserId
+      })
+      .eq("id", id)
+      .eq("is_available", true)
+      .select();
+
+    if(error || !data || data.length === 0){
+      alert("すでに利用されています");
+      loadParking();
+      return;
+    }
+
+    currentSelectedId = id;
+
+    const space = data[0];
+
+    await sb.from("parking_usage").insert({
+      parking_id: id
+    });
+
+    document.getElementById("currentInfo").innerHTML = `
   <div style="font-family:sans-serif;">
     
     <h4 style="margin-bottom:8px;">${space.title}</h4>
@@ -248,92 +403,93 @@ async function useParking(id){
   </div>
 `;
 
-  // 小マップ表示
-  const miniMapDiv = document.getElementById("miniMap");
-  miniMapDiv.style.display = "block";
+    const miniMapDiv = document.getElementById("miniMap");
+    miniMapDiv.style.display = "block";
 
-  if(miniMap){
-    miniMap.remove();
-  }
-
-  miniMap = L.map('miniMap').setView(
-    [space.latitude, space.longitude], 
-    17
-  );
-
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-    attribution:'© OpenStreetMap'
-  }).addTo(miniMap);
-
-  miniMarker = L.marker([space.latitude, space.longitude])
-    .addTo(miniMap);
-
-  // ==========================
-  // マップ全体を白くするオーバーレイヤー
-  // ==========================
-  const bounds = map.getBounds();
-  overlayLayer = L.rectangle(bounds, {
-    color: '#ffffff',
-    weight: 0,
-    fillOpacity: 0.7, // 白の濃さ
-    interactive: false
-  }).addTo(map);
-
-  // 選択駐車場だけ前面に出す
-  markerGroup.eachLayer(marker=>{
-    if(marker.getLatLng().lat === space.latitude && marker.getLatLng().lng === space.longitude){
-      marker.setZIndexOffset(1000);
-      marker.openPopup();
+    if(miniMap){
+      miniMap.remove();
     }
-  });
 
-  loadParking();
-}
+    miniMap = L.map('miniMap').setView(
+      [space.latitude, space.longitude], 
+      17
+    );
 
-async function cancelParking(id){
-  currentSelectedId = null;
+    L.tileLayer(
+      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      { attribution:'© OpenStreetMap' }
+    ).addTo(miniMap);
 
-  // 空きに戻す
-  await sb
-    .from("parking_spaces")
-    .update({ is_available:true })
-    .eq("id",id);
+    miniMarker = L.marker([space.latitude, space.longitude])
+      .addTo(miniMap);
 
-  // 利用履歴削除（最後の1件）
-  await sb
-    .from("parking_usage")
-    .delete()
-    .eq("parking_id", id)
-    .order("used_at", { ascending:false })
-    .limit(1);
+    const bounds = map.getBounds();
 
-  // 画面表示初期化
-  document.getElementById("currentInfo").innerHTML =
-    "利用中の駐車場はありません";
+    overlayLayer = L.rectangle(bounds, {
+      color: '#ffffff',
+      weight: 0,
+      fillOpacity: 0.7,
+      interactive: false
+    }).addTo(map);
 
-  // 小マップ破棄
-  if(miniMap){
-    miniMap.remove();
-    miniMap = null;
-  }
-  document.getElementById("miniMap").style.display = "none";
+    markerGroup.eachLayer(marker=>{
+      if(marker.getLatLng().lat === space.latitude && marker.getLatLng().lng === space.longitude){
+        marker.setZIndexOffset(1000);
+        marker.openPopup();
+      }
+    });
 
-  // マップの白オーバーレイヤー削除
-  if(overlayLayer){
-    overlayLayer.remove();
-    overlayLayer = null;
+    loadParking();
   }
 
-  loadParking();
-}
+  /* ==============================
+     キャンセル処理
+  ============================== */
+  async function cancelParking(id){
 
-// ==============================
-// Googleマップを新しいタブで開く
-// ==============================
-function openGoogleMap(lat, lng){
-  const url = `https://www.google.com/maps?q=${lat},${lng}`;
-  window.open(url, "_blank");
-}
+    currentSelectedId = null;
+
+    await sb
+      .from("parking_spaces")
+      .update({
+        is_available:true,
+        rented_by:null
+      })
+      .eq("id",id)
+      .eq("rented_by", myUserId);
+
+    await sb
+      .from("parking_usage")
+      .delete()
+      .eq("parking_id", id)
+      .order("used_at", { ascending:false })
+      .limit(1);
+
+    document.getElementById("currentInfo").innerHTML =
+      "利用中の駐車場はありません";
+
+    if(miniMap){
+      miniMap.remove();
+      miniMap = null;
+    }
+
+    document.getElementById("miniMap").style.display = "none";
+
+    if(overlayLayer){
+      overlayLayer.remove();
+      overlayLayer = null;
+    }
+
+    loadParking();
+  }
+
+  /* ==============================
+     Googleマップを新しいタブで開く
+  ============================== */
+  function openGoogleMap(lat, lng){
+    const url = `https://www.google.com/maps?q=${lat},${lng}`;
+    window.open(url, "_blank");
+  }
 
 </script>
 </body>
