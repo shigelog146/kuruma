@@ -174,17 +174,40 @@ async function useParking(id){
 
   // 利用中表示
   document.getElementById("currentInfo").innerHTML = `
-    <h4>${space.title}</h4>
-    <p style="font-size:18px; color:red;">
+  <div style="font-family:sans-serif;">
+    
+    <h4 style="margin-bottom:8px;">${space.title}</h4>
+
+    ${space.image_url ? `
+      <img 
+        src="${space.image_url}" 
+        style="
+          width:100%;
+          max-height:200px;
+          object-fit:contain;
+          margin-bottom:10px;
+          border:1px solid #ccc;
+          background:#fff;
+          height:180px;
+          object-fit:contain;
+        "
+      >
+    ` : ""}
+
+    <p style="font-size:18px; color:red; margin:5px 0;">
       ${space.price} 円
     </p>
+
     <button onclick="cancelParking('${id}')">
       キャンセルする
     </button>
+
     <button onclick="openGoogleMap(${space.latitude}, ${space.longitude})">
       Googleマップで開く
     </button>
-  `;
+
+  </div>
+`;
 
   // 小マップ表示
   const miniMapDiv = document.getElementById("miniMap");
