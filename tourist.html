@@ -152,25 +152,64 @@ marker.bindPopup(`
 
 loadParking();
 
+// ==============================
+// Realtime購読（ここだけ）
+// ==============================
+sb.channel('parking-channel')
+  .on(
+    'postgres_changes',
+    {
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'parking_spaces'
+    },
+    (payload) => {
+
+      const newRow = payload.new;
+
+      // 他人が利用したときだけ再描画
+      if(newRow.is_available === false){
+
+        // 自分が選択中のIDなら無視
+        if(currentSelectedId === newRow.id) return;
+
+        loadParking();
+      }
+
+      // キャンセル時
+      if(newRow.is_available === true){
+        loadParking();
+      }
+
+    }
+  )
+  .subscribe();
+
 async function useParking(id){
-  // 1つしか選択できない
+
   if(currentSelectedId) return;
+
+  // ★ 原子的更新
+  const { data, error } = await sb
+    .from("parking_spaces")
+    .update({ is_available: false })
+    .eq("id", id)
+    .eq("is_available", true)
+    .select();
+
+  if(error || !data || data.length === 0){
+    alert("すでに利用されています");
+    loadParking();
+    return;
+  }
+
   currentSelectedId = id;
 
-  const { data: space } = await sb
-    .from("parking_spaces")
-    .select("*")
-    .eq("id", id)
-    .single();
+  const space = data[0];
 
-  // 利用履歴追加
-  await sb.from("parking_usage").insert({ parking_id: id });
-
-  // 空き状態を false にする
-  await sb
-    .from("parking_spaces")
-    .update({ is_available:false })
-    .eq("id",id);
+  await sb.from("parking_usage").insert({
+    parking_id: id
+  });
 
   // 利用中表示
   document.getElementById("currentInfo").innerHTML = `
