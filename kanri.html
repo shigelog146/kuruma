@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>駐車場管理画面</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <style>
+    body {
+      font-size: 20px;
+      padding: 15px;
+      background: #eef3f7;
+      font-family: sans-serif;
+    }
+
+    h2 {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+      font-size: 28px;
+    }
+
+    .card {
+      background: #fff;
+      padding: 15px;
+      margin-bottom: 20px;
+      border-radius: 10px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+
+    .card img {
+      width: 100%;
+      border-radius: 8px;
+      margin-top: 10px;
+    }
+
+    .delete-btn {
+      background: #d9534f;
+      color: #fff;
+      padding: 10px;
+      width: 100%;
+      border: none;
+      border-radius: 8px;
+      margin-top: 15px;
+      font-size: 18px;
+    }
+
+    .refresh-btn {
+      background: #0275d8;
+      color: #fff;
+      padding: 10px;
+      width: 100%;
+      border: none;
+      border-radius: 8px;
+      font-size: 18px;
+      margin-bottom: 20px;
+    }
+
+    .empty {
+      text-align: center;
+      color: #666;
+      margin-top: 30px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h2>駐車場管理画面</h2>
+
+  <button id="refreshBtn" class="refresh-btn">最新の状態に更新</button>
+
+  <div id="list"></div>
+
+  <script type="module">
+    /* ==============================
+       Supabase 初期化
+    ============================== */
+    import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+
+    const sb = createClient(
+      "https://zyvpzobykvuscxuhsrad.supabase.co",
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5dnB6b2J5a3Z1c2N4dWhzcmFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3OTE0NTAsImV4cCI6MjA4NTM2NzQ1MH0.Z2cKv3VSlk3iibQl7ldwcff9WF5cBHTZkcrdvxA2Bbk",
+      {
+        auth: { persistSession: false, autoRefreshToken: false }
+      }
+    );
+
+    /* ==============================
+       駐車場一覧を取得して表示
+    ============================== */
+    async function loadList() {
+      const container = document.getElementById("list");
+      container.innerHTML = "読み込み中...";
+
+      const { data, error } = await sb
+        .from("parking_spaces")
+        .select("*")
+        .order("id", { ascending: false });
+
+      if (error) {
+        container.innerHTML = "読み込み失敗";
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        container.innerHTML = "<p class='empty'>登録された駐車場はありません</p>";
+        return;
+      }
+
+      container.innerHTML = "";
+
+      data.forEach(item => {
+        const card = document.createElement("div");
+        card.className = "card";
+
+        const priceText = item.price === null ? "未設定" : item.price + "円 / 日";
+
+        card.innerHTML = `
+          <h3>${item.title ?? "(名称なし)"}</h3>
+          <p>料金：${priceText}</p>
+          <p>緯度：${item.latitude}</p>
+          <p>経度：${item.longitude}</p>
+          <p>${item.comment ?? ""}</p>
+          ${
+            item.image_url
+              ? `<img src="${item.image_url}">`
+              : ""
+          }
+          <button class="delete-btn" data-id="${item.id}" data-img="${item.image_url}">
+            この駐車場を削除
+          </button>
+        `;
+
+        container.appendChild(card);
+      });
+
+      /* 削除ボタン処理 */
+      document.querySelectorAll(".delete-btn").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const id = btn.dataset.id;
+          const imageUrl = btn.dataset.img;
+
+          if (!confirm("本当に削除しますか？")) return;
+
+          // =============== Storageの画像削除処理 ===============
+          if (imageUrl) {
+            const fileName = imageUrl.split("/").pop();  
+            await sb.storage.from("parking-images").remove([fileName]);
+          }
+
+          // =============== DB削除 ===============
+          const { error } = await sb
+            .from("parking_spaces")
+            .delete()
+            .eq("id", id);
+
+          if (error) {
+            alert("削除に失敗しました");
+          } else {
+            alert("削除しました");
+            loadList(); // 再読込
+          }
+        });
+      });
+    }
+
+    // 初回ロード
+    loadList();
+
+    // 更新ボタン
+    document.getElementById("refreshBtn").addEventListener("click", loadList);
+
+  </script>
+</body>
+</html>
