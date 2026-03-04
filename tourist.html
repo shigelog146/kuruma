@@ -110,6 +110,7 @@ if (!myUserId) {
 }
 
 let firstLoad = true; // 初回読み込み判定フラグ
+let usageRecorded = false; // 利用記録済みフラグ
 
 /* =========================================================
    メインマップ初期化
@@ -267,9 +268,25 @@ function updateCurrentArea(space) {
         ${space.price} 円
       </p>
 
-      <button onclick="cancelParking('${space.id}')">
-        キャンセルする
-      </button>
+      ${usageRecorded ? `
+        <button disabled style="opacity:0.5;cursor:not-allowed;">
+          キャンセル（利用中）
+        </button>
+      ` : `
+        <button onclick="cancelParking('${space.id}')">
+          キャンセルする
+        </button>
+      `}
+
+      ${usageRecorded ? `
+        <button onclick="recordUsageEnd('${space.id}')">
+          利用終了
+        </button>
+      ` : `
+        <button onclick="recordUsage('${space.id}')">
+          利用開始
+        </button>
+      `}
 
       <button onclick="openGoogleMap(${space.latitude},${space.longitude})">
         Googleマップで開く
@@ -292,6 +309,110 @@ function updateCurrentArea(space) {
 
   miniMarker = L.marker([space.latitude, space.longitude])
     .addTo(miniMap);
+}
+
+/* =========================================================
+   利用記録テーブルへの書き込み
+   ========================================================= */
+async function recordUsage(parkingId) {
+  console.log("利用記録追加:", parkingId);
+
+  // 既に記録済みなら処理中止
+  if (usageRecorded) {
+    console.log("既に利用記録済みです");
+    return;
+  }
+
+  // 即座にロック（並行実行を防ぐ）
+  usageRecorded = true;
+
+  // Supabase authユーザーがある場合のみ user_id を設定
+  let payload = { parking_id: parkingId };
+  const user = await sb.auth.getUser();
+  if (user && user.data && user.data.user && user.data.user.id) {
+    payload.user_id = user.data.user.id;
+  }
+
+  const { data, error } = await sb
+    .from('parking_usage')
+    .insert(payload);
+
+  if (error) {
+    console.error('recordUsage error', error);
+    alert('利用記録の保存中にエラーが発生しました');
+    usageRecorded = false; // エラー時はロック解除
+    return;
+  }
+
+  console.log('利用記録保存完了', data);
+  await loadParking(); // UI を再レンダリング
+}
+
+/* =========================================================
+   利用終了を parking_usage に記録
+   ========================================================= */
+async function recordUsageEnd(parkingId) {
+  console.log("利用終了記録:", parkingId);
+
+  if (!usageRecorded) {
+    console.log("利用開始記録がありません");
+    return;
+  }
+
+  // 最新の未完了レコードを取得
+  const { data: records, error: queryError } = await sb
+    .from('parking_usage')
+    .select('id')
+    .eq('parking_id', parkingId)
+    .is('ended_at', null)
+    .order('used_at', { ascending: false })
+    .limit(1);
+
+  if (queryError) {
+    console.error('recordUsageEnd query error', queryError);
+    alert('利用終了記録の保存中にエラーが発生しました');
+    return;
+  }
+
+  if (!records || records.length === 0) {
+    alert('利用開始記録が見つかりません');
+    return;
+  }
+
+  const recordId = records[0].id;
+
+  // 利用終了時刻を記録
+  const { data, error } = await sb
+    .from('parking_usage')
+    .update({ ended_at: new Date().toISOString() })
+    .eq('id', recordId);
+
+  if (error) {
+    console.error('recordUsageEnd error', error);
+    alert('利用終了記録の保存中にエラーが発生しました');
+    return;
+  }
+
+  console.log('利用終了記録保存完了', data);
+
+  // 駐車場を利用可能に戻す
+  const { error: updateError } = await sb
+    .from('parking_spaces')
+    .update({
+      is_available: true,
+      rented_by: null
+    })
+    .eq('id', parkingId);
+
+  if (updateError) {
+    console.error('駐車場更新エラー', updateError);
+    alert('駐車場の更新中にエラーが発生しました');
+    return;
+  }
+
+  usageRecorded = false;
+  currentSelectedId = null;
+  await loadParking(); // UI を再レンダリング
 }
 
 /* =========================================================
@@ -374,6 +495,7 @@ async function useParking(id) {
 async function cancelParking(id) {
 
   currentSelectedId = null;
+  usageRecorded = false;
 
   await sb
     .from("parking_spaces")
