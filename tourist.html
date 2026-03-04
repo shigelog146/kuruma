@@ -62,6 +62,40 @@
       border: 1px solid #7293a8;
       border-radius: 0 !important;
     }
+
+    /* モーダルスタイル */
+    #carNumberModal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      display: none;
+      z-index: 1000;
+    }
+    #carNumberModal .modal-content {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      padding: 20px;
+      border: 1px solid #ccc;
+      max-width: 400px;
+      width: 90%;
+    }
+    #carNumberForm input, #carNumberForm select {
+      width: 100%;
+      padding: 8px;
+      margin-bottom: 10px;
+      font-size: 16px;
+    }
+    #carNumberForm button {
+      padding: 10px 20px;
+      margin-right: 10px;
+      font-size: 16px;
+    }
   </style>
 </head>
 
@@ -102,6 +136,7 @@ let miniMarker = null;         // 小地図マーカー
 let currentSelectedId = null;  // 現在利用中ID
 let overlayLayer = null;       // （未使用変数）
 let popupOpen = false;
+let currentParkingId = null;   // 利用開始中の駐車場ID
 /* ユーザー識別ID（ローカル保存） */
 let myUserId = localStorage.getItem("myParkingUserId");
 if (!myUserId) {
@@ -140,7 +175,7 @@ async function loadParking() {
 
   let query = sb
     .from("parking_spaces")
-    .select("id,title,price,latitude,longitude,is_available,rented_by,image_url");
+    .select("id,title,price,latitude,longitude,is_available,rented_by,image_url,comment");
 
   /* 初回以外は現在表示範囲のみ取得 */
   if (!firstLoad) {
@@ -198,6 +233,7 @@ async function loadParking() {
         <p style="margin: 0 0 12px; color: #e74c3c; font-size: 28px; font-weight: bold;">
           ￥${space.price.toLocaleString()} / 1日利用
         </p>
+        ${space.comment ? `<p style="margin: 0 0 12px; font-size: 20px;">${space.comment}</p>` : ''}
         <div style="text-align: center;">
           <button 
             onclick="useParking('${space.id}')" 
@@ -317,35 +353,21 @@ function updateCurrentArea(space) {
 async function recordUsage(parkingId) {
   console.log("利用記録追加:", parkingId);
 
+  // 予約されていない場合は中止
+  if (!currentSelectedId || currentSelectedId !== parkingId) {
+    alert('まず予約してください。');
+    return;
+  }
+
   // 既に記録済みなら処理中止
   if (usageRecorded) {
     console.log("既に利用記録済みです");
     return;
   }
 
-  // 即座にロック（並行実行を防ぐ）
-  usageRecorded = true;
-
-  // Supabase authユーザーがある場合のみ user_id を設定
-  let payload = { parking_id: parkingId };
-  const user = await sb.auth.getUser();
-  if (user && user.data && user.data.user && user.data.user.id) {
-    payload.user_id = user.data.user.id;
-  }
-
-  const { data, error } = await sb
-    .from('parking_usage')
-    .insert(payload);
-
-  if (error) {
-    console.error('recordUsage error', error);
-    alert('利用記録の保存中にエラーが発生しました');
-    usageRecorded = false; // エラー時はロック解除
-    return;
-  }
-
-  console.log('利用記録保存完了', data);
-  await loadParking(); // UI を再レンダリング
+  // モーダルを表示
+  currentParkingId = parkingId;
+  document.getElementById('carNumberModal').style.display = 'block';
 }
 
 /* =========================================================
@@ -360,13 +382,25 @@ async function recordUsageEnd(parkingId) {
   }
 
   // 最新の未完了レコードを取得
-  const { data: records, error: queryError } = await sb
+  let query = sb
     .from('parking_usage')
     .select('id')
     .eq('parking_id', parkingId)
     .is('ended_at', null)
     .order('used_at', { ascending: false })
     .limit(1);
+
+  // ユーザーIDでフィルタ（認証されている場合のみ）
+  const user = await sb.auth.getUser();
+  console.log('recordUsageEnd: parkingId=', parkingId, 'user=', user);
+  if (user && user.data && user.data.user && user.data.user.id) {
+    query = query.eq('user_id', user.data.user.id);
+  } else {
+    query = query.is('user_id', null);
+  }
+
+  const { data: records, error: queryError } = await query;
+  console.log('records:', records, 'error:', queryError);
 
   if (queryError) {
     console.error('recordUsageEnd query error', queryError);
@@ -517,6 +551,187 @@ function openGoogleMap(lat, lng) {
   window.open(url, "_blank");
 }
 
+/* =========================================================
+   モーダル関連関数
+   ========================================================= */
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('carNumberForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const region = document.getElementById('region').value.trim();
+    const classNumber = document.getElementById('classNumber').value.trim();
+    const kana = document.getElementById('kana').value.trim();
+    const serialNumber = document.getElementById('serialNumber').value.trim();
+
+    if (!region || !classNumber || !kana || !serialNumber) {
+      alert('全ての項目を入力してください。');
+      return;
+    }
+
+    const carNumber = `${region} ${classNumber} ${kana} ${serialNumber}`;
+
+    console.log('保存開始: parking_id=', currentParkingId, 'car_number=', carNumber);
+
+    // モーダルを閉じる
+    closeModal();
+
+    // 既に記録済みなら処理中止
+    if (usageRecorded) {
+      return;
+    }
+
+    // 即座にロック（並行実行を防ぐ）
+    usageRecorded = true;
+
+    // Supabase authユーザーがある場合のみ user_id を設定
+    let payload = { parking_id: currentParkingId, car_number: carNumber };
+    const user = await sb.auth.getUser();
+    if (user && user.data && user.data.user && user.data.user.id) {
+      payload.user_id = user.data.user.id;
+    }
+
+    console.log('payload:', payload);
+
+    const { data, error } = await sb
+      .from('parking_usage')
+      .insert(payload);
+
+    console.log('insert result:', data, error);
+
+    if (error) {
+      console.error('recordUsage error', error);
+      alert('利用記録の保存中にエラーが発生しました: ' + error.message);
+      usageRecorded = false; // エラー時はロック解除
+      return;
+    }
+
+    console.log('利用記録保存完了', data);
+    await loadParking(); // UI を再レンダリング
+  });
+});
+
+function closeModal() {
+  document.getElementById('carNumberModal').style.display = 'none';
+  document.getElementById('carNumberForm').reset();
+}
+
 </script>
+
+<!-- モーダルダイアログ -->
+<div id="carNumberModal">
+  <div class="modal-content">
+    <h3>車のナンバープレートを入力してください</h3>
+    <form id="carNumberForm">
+      <label>地域名:</label><br>
+      <select id="region" required>
+        <option value="">選択してください</option>
+        <option value="北海道">北海道</option>
+        <option value="青森">青森</option>
+        <option value="岩手">岩手</option>
+        <option value="宮城">宮城</option>
+        <option value="秋田">秋田</option>
+        <option value="山形">山形</option>
+        <option value="福島">福島</option>
+        <option value="茨城">茨城</option>
+        <option value="栃木">栃木</option>
+        <option value="群馬">群馬</option>
+        <option value="埼玉">埼玉</option>
+        <option value="千葉">千葉</option>
+        <option value="東京">東京</option>
+        <option value="神奈川">神奈川</option>
+        <option value="新潟">新潟</option>
+        <option value="富山">富山</option>
+        <option value="石川">石川</option>
+        <option value="福井">福井</option>
+        <option value="山梨">山梨</option>
+        <option value="長野">長野</option>
+        <option value="岐阜">岐阜</option>
+        <option value="静岡">静岡</option>
+        <option value="愛知">愛知</option>
+        <option value="三重">三重</option>
+        <option value="滋賀">滋賀</option>
+        <option value="京都">京都</option>
+        <option value="大阪">大阪</option>
+        <option value="兵庫">兵庫</option>
+        <option value="奈良">奈良</option>
+        <option value="和歌山">和歌山</option>
+        <option value="鳥取">鳥取</option>
+        <option value="島根">島根</option>
+        <option value="岡山">岡山</option>
+        <option value="広島">広島</option>
+        <option value="山口">山口</option>
+        <option value="徳島">徳島</option>
+        <option value="香川">香川</option>
+        <option value="愛媛">愛媛</option>
+        <option value="高知">高知</option>
+        <option value="福岡">福岡</option>
+        <option value="佐賀">佐賀</option>
+        <option value="長崎">長崎</option>
+        <option value="熊本">熊本</option>
+        <option value="大分">大分</option>
+        <option value="宮崎">宮崎</option>
+        <option value="鹿児島">鹿児島</option>
+        <option value="沖縄">沖縄</option>
+      </select><br><br>
+      <label>分類番号:</label><br>
+      <input type="text" id="classNumber" required><br><br>
+      <label>③かな文字:</label><br>
+      <select id="kana" required>
+        <option value="">選択してください</option>
+        <option value="あ">あ</option>
+        <option value="い">い</option>
+        <option value="う">う</option>
+        <option value="え">え</option>
+        <option value="お">お</option>
+        <option value="か">か</option>
+        <option value="き">き</option>
+        <option value="く">く</option>
+        <option value="け">け</option>
+        <option value="こ">こ</option>
+        <option value="さ">さ</option>
+        <option value="し">し</option>
+        <option value="す">す</option>
+        <option value="せ">せ</option>
+        <option value="そ">そ</option>
+        <option value="た">た</option>
+        <option value="ち">ち</option>
+        <option value="つ">つ</option>
+        <option value="て">て</option>
+        <option value="と">と</option>
+        <option value="な">な</option>
+        <option value="に">に</option>
+        <option value="ぬ">ぬ</option>
+        <option value="ね">ね</option>
+        <option value="の">の</option>
+        <option value="は">は</option>
+        <option value="ひ">ひ</option>
+        <option value="ふ">ふ</option>
+        <option value="へ">へ</option>
+        <option value="ほ">ほ</option>
+        <option value="ま">ま</option>
+        <option value="み">み</option>
+        <option value="む">む</option>
+        <option value="め">め</option>
+        <option value="も">も</option>
+        <option value="や">や</option>
+        <option value="ゆ">ゆ</option>
+        <option value="よ">よ</option>
+        <option value="ら">ら</option>
+        <option value="り">り</option>
+        <option value="る">る</option>
+        <option value="れ">れ</option>
+        <option value="ろ">ろ</option>
+        <option value="わ">わ</option>
+        <option value="を">を</option>
+        <option value="ん">ん</option>
+      </select><br><br>
+      <label>④一連指定番号:</label><br>
+      <input type="text" id="serialNumber" required><br><br>
+      <button type="submit">保存</button>
+      <button type="button" onclick="closeModal()">キャンセル</button>
+    </form>
+  </div>
+</div>
+
 </body>
 </html>
