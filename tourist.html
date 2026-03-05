@@ -85,11 +85,18 @@
       max-width: 400px;
       width: 90%;
     }
+    #carNumberForm label {
+      display: block;
+      margin-top: 10px;
+      margin-bottom: 5px;
+      font-size: 14px;
+    }
     #carNumberForm input, #carNumberForm select {
       width: 100%;
       padding: 8px;
       margin-bottom: 10px;
       font-size: 16px;
+      box-sizing: border-box;
     }
     #carNumberForm button {
       padding: 10px 20px;
@@ -555,6 +562,16 @@ function openGoogleMap(lat, lng) {
    モーダル関連関数
    ========================================================= */
 document.addEventListener('DOMContentLoaded', function() {
+  // 分類番号：数字のみ
+  document.getElementById('classNumber').addEventListener('input', function(e) {
+    e.target.value = e.target.value.replace(/[^0-9]/g, '');
+  });
+
+  // 一連指定番号：数字と「-」のみ
+  document.getElementById('serialNumber').addEventListener('input', function(e) {
+    e.target.value = e.target.value.replace(/[^0-9\-]/g, '');
+  });
+
   document.getElementById('carNumberForm').addEventListener('submit', async function(e) {
     e.preventDefault();
 
@@ -622,7 +639,8 @@ function closeModal() {
   <div class="modal-content">
     <h3>車のナンバープレートを入力してください</h3>
     <form id="carNumberForm">
-      <label>地域名:</label><br>
+      <label>地域名:</label>
+      <small style="color: #999;">例：東京、大阪など</small><br>
       <select id="region" required>
         <option value="">選択してください</option>
         <option value="北海道">北海道</option>
@@ -673,9 +691,11 @@ function closeModal() {
         <option value="鹿児島">鹿児島</option>
         <option value="沖縄">沖縄</option>
       </select><br><br>
-      <label>分類番号:</label><br>
-      <input type="text" id="classNumber" required><br><br>
-      <label>③かな文字:</label><br>
+      <label>分類番号:</label>
+      <small style="color: #999;">例：123（普通乗用車の場合）</small><br>
+      <input type="text" id="classNumber" placeholder="123" inputmode="numeric" required><br><br>
+      <label>③かな文字:</label>
+      <small style="color: #999;">例：あ、い、うなど（1文字）</small><br>
       <select id="kana" required>
         <option value="">選択してください</option>
         <option value="あ">あ</option>
@@ -725,8 +745,9 @@ function closeModal() {
         <option value="を">を</option>
         <option value="ん">ん</option>
       </select><br><br>
-      <label>④一連指定番号:</label><br>
-      <input type="text" id="serialNumber" required><br><br>
+      <label>④一連指定番号:</label>
+      <small style="color: #999;">例：1234（4ケタの数字）</small><br>
+      <input type="text" id="serialNumber" placeholder="1234" required><br><br>
       <button type="submit">保存</button>
       <button type="button" onclick="closeModal()">キャンセル</button>
     </form>
