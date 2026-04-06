@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
   <meta charset="UTF-8">
   <title>観光客用 駐車場マップ</title>
@@ -13,14 +14,14 @@
   <!-- ==============================
        Leaflet（地図ライブラリ）
        ============================== -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
   <!-- ==============================
        MarkerCluster（ピン大量表示対策）
        ============================== -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css"/>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
   <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
 
   <style>
@@ -74,6 +75,7 @@
       display: none;
       z-index: 1000;
     }
+
     #carNumberModal .modal-content {
       position: absolute;
       top: 50%;
@@ -85,19 +87,23 @@
       max-width: 400px;
       width: 90%;
     }
+
     #carNumberForm label {
       display: block;
       margin-top: 10px;
       margin-bottom: 5px;
       font-size: 14px;
     }
-    #carNumberForm input, #carNumberForm select {
+
+    #carNumberForm input,
+    #carNumberForm select {
       width: 100%;
       padding: 8px;
       margin-bottom: 10px;
       font-size: 16px;
       box-sizing: border-box;
     }
+
     #carNumberForm button {
       padding: 10px 20px;
       margin-right: 10px;
@@ -125,114 +131,169 @@
   <h2>利用可能な駐車場</h2>
   <div id="map"></div>
 
-<script>
+  <script>
 
-/* =========================================================
-   Supabase接続設定
-   ========================================================= */
-const sb = window.supabase.createClient(
-  "https://zyvpzobykvuscxuhsrad.supabase.co",
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5dnB6b2J5a3Z1c2N4dWhzcmFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3OTE0NTAsImV4cCI6MjA4NTM2NzQ1MH0.Z2cKv3VSlk3iibQl7ldwcff9WF5cBHTZkcrdvxA2Bbk"
-);
+    /* =========================================================
+       Supabase接続設定
+       ========================================================= */
+    const sb = window.supabase.createClient(
+      "https://zyvpzobykvuscxuhsrad.supabase.co",
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5dnB6b2J5a3Z1c2N4dWhzcmFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3OTE0NTAsImV4cCI6MjA4NTM2NzQ1MH0.Z2cKv3VSlk3iibQl7ldwcff9WF5cBHTZkcrdvxA2Bbk"
+    );
 
-/* =========================================================
-   グローバル変数定義
-   ========================================================= */
-let miniMap = null;            // 現在利用中の小地図
-let miniMarker = null;         // 小地図マーカー
-let currentSelectedId = null;  // 現在利用中ID
-let overlayLayer = null;       // （未使用変数）
-let popupOpen = false;
-let currentParkingId = null;   // 利用開始中の駐車場ID
-/* ユーザー識別ID（ローカル保存） */
-let myUserId = localStorage.getItem("myParkingUserId");
-if (!myUserId) {
-  myUserId = crypto.randomUUID();
-  localStorage.setItem("myParkingUserId", myUserId);
-}
-
-let firstLoad = true; // 初回読み込み判定フラグ
-let usageRecorded = false; // 利用記録済みフラグ
-
-/* =========================================================
-   メインマップ初期化
-   ========================================================= */
-let map = L.map('map').setView([35.0, 135.0], 14);
-
-/* OpenStreetMapタイル読み込み */
-L.tileLayer(
-  'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-  { attribution: '© OpenStreetMap' }
-).addTo(map);
-
-/* クラスターマーカー設定 */
-let markerGroup = L.markerClusterGroup({
-  chunkedLoading: true,
-  chunkInterval: 200,
-  chunkDelay: 50
-});
-map.addLayer(markerGroup);
-
-/* =========================================================
-   駐車場データ読み込み
-   ========================================================= */
-async function loadParking() {
-
-  markerGroup.clearLayers(); // 既存マーカー削除
-
-  let query = sb
-    .from("parking_spaces")
-    .select("id,title,price,latitude,longitude,is_available,rented_by,image_url,comment");
-
-  /* 初回以外は現在表示範囲のみ取得 */
-  if (!firstLoad) {
-    const bounds = map.getBounds();
-
-    query = query
-      .gte("latitude", bounds.getSouth())
-      .lte("latitude", bounds.getNorth())
-      .gte("longitude", bounds.getWest())
-      .lte("longitude", bounds.getEast());
-  }
-
-  const { data, error } = await query;
-
-  console.log("取得データ:", data);
-  console.log("取得エラー:", error);
-
-  if (error) {
-    console.log(error);
-    return;
-  }
-
-  if (!data || data.length === 0) {
-    return;
-  }
-
-  let latlngs = [];
-  let myParking = null;
-
-  data.forEach(space => {
-
-    /* 自分が利用中か判定 */
-    if (space.rented_by === myUserId) {
-      myParking = space;
+    /* =========================================================
+       グローバル変数定義
+       ========================================================= */
+    let miniMap = null;            // 現在利用中の小地図
+    let miniMarker = null;         // 小地図マーカー
+    let currentSelectedId = null;  // 現在利用中ID
+    let overlayLayer = null;       // （未使用変数）
+    let popupOpen = false;
+    let currentParkingId = null;   // 利用開始中の駐車場ID
+    /* ユーザー識別ID（ローカル保存） */
+    let myUserId = localStorage.getItem("myParkingUserId");
+    if (!myUserId) {
+      myUserId = crypto.randomUUID();
+      localStorage.setItem("myParkingUserId", myUserId);
     }
 
-    /* 他人利用中は非表示 */
-    if (!space.is_available && space.rented_by !== myUserId) {
-      return;
+    let firstLoad = true; // 初回読み込み判定フラグ
+    let usageRecorded = false; // 利用記録済みフラグ
+
+    /* =========================================================
+       メインマップ初期化
+       ========================================================= */
+    let map = L.map('map').setView([35.0, 135.0], 14);
+    /* =========================================================
+       現在地表示（赤ピン）
+       ========================================================= */
+    let myLocationMarker = null;
+
+    function showMyLocation() {
+
+      if (!navigator.geolocation) {
+        alert("このブラウザは位置情報に対応していません");
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+
+          console.log("現在地:", lat, lng);
+
+          // 既存マーカーがあれば削除
+          if (myLocationMarker) {
+            map.removeLayer(myLocationMarker);
+          }
+
+          // 赤アイコン作成
+          const redIcon = L.icon({
+            iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
+            shadowUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png",
+            iconSize: [25, 41],
+            iconAnchor: [12, 41]
+          });
+
+          // マーカー設置
+          myLocationMarker = L.marker([lat, lng], { icon: redIcon })
+            .addTo(map)
+            .bindPopup("現在地")
+            .openPopup();
+
+          // 初回だけズーム寄せる（UX改善）
+          if (firstLoad) {
+            map.setView([lat, lng], 15);
+          }
+
+        },
+        (error) => {
+          console.log("位置取得エラー:", error);
+          alert("位置情報の取得に失敗しました（GPSをONにしてください）");
+        },
+        {
+          enableHighAccuracy: true, // 精度優先
+          timeout: 10000,
+          maximumAge: 0
+        }
+      );
     }
+    /* OpenStreetMapタイル読み込み */
+    L.tileLayer(
+      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      { attribution: '© OpenStreetMap' }
+    ).addTo(map);
 
-    const lat = Number(space.latitude);
-    const lng = Number(space.longitude);
+    /* クラスターマーカー設定 */
+    let markerGroup = L.markerClusterGroup({
+      chunkedLoading: true,
+      chunkInterval: 200,
+      chunkDelay: 50
+    });
+    map.addLayer(markerGroup);
 
-    latlngs.push([lat, lng]);
+    /* =========================================================
+       駐車場データ読み込み
+       ========================================================= */
+    async function loadParking() {
 
-    const marker = L.marker([lat, lng]);
+      markerGroup.clearLayers(); // 既存マーカー削除
 
-    /* ポップアップ生成 */
-    marker.bindPopup(`
+      let query = sb
+        .from("parking_spaces")
+        .select("id,title,price,latitude,longitude,is_available,rented_by,image_url,comment");
+
+      /* 初回以外は現在表示範囲のみ取得 */
+      if (!firstLoad) {
+        const bounds = map.getBounds();
+
+        query = query
+          .gte("latitude", bounds.getSouth())
+          .lte("latitude", bounds.getNorth())
+          .gte("longitude", bounds.getWest())
+          .lte("longitude", bounds.getEast());
+      }
+
+      const { data, error } = await query;
+
+      console.log("取得データ:", data);
+      console.log("取得エラー:", error);
+
+      if (error) {
+        console.log(error);
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        return;
+      }
+
+      let latlngs = [];
+      let myParking = null;
+
+      data.forEach(space => {
+
+        /* 自分が利用中か判定 */
+        if (space.rented_by === myUserId) {
+          myParking = space;
+        }
+
+        /* 他人利用中は非表示 */
+        if (!space.is_available && space.rented_by !== myUserId) {
+          return;
+        }
+
+        const lat = Number(space.latitude);
+        const lng = Number(space.longitude);
+
+        latlngs.push([lat, lng]);
+
+        const marker = L.marker([lat, lng]);
+
+        /* ポップアップ生成 */
+        marker.bindPopup(`
       <div style="font-family: 'Segoe UI', sans-serif; padding: 10px; max-width: 250px;">
         <h3 style="margin: 0 0 8px; font-size: 28px; color: #2c3e50;">
           ${space.title}
@@ -262,42 +323,42 @@ async function loadParking() {
         </div>
       </div>
     `, {
-      autoPan: false
-    });
+          autoPan: false
+        });
 
-    markerGroup.addLayer(marker);
-  });
+        markerGroup.addLayer(marker);
+      });
 
-  /* 初回のみ自動ズーム */
-  if (firstLoad && latlngs.length > 0) {
-    map.fitBounds(latlngs);
-    firstLoad = false;
-  }
+      /* 初回のみ自動ズーム */
+      if (firstLoad && latlngs.length > 0) {
+        map.fitBounds(latlngs);
+        firstLoad = false;
+      }
 
-  updateCurrentArea(myParking);
-}
-
-/* =========================================================
-   現在利用中エリアUI更新
-   ========================================================= */
-function updateCurrentArea(space) {
-
-  if (!space) {
-    document.getElementById("currentInfo").innerHTML =
-      "利用中の駐車場はありません";
-
-    if (miniMap) {
-      miniMap.remove();
-      miniMap = null;
+      updateCurrentArea(myParking);
     }
 
-    document.getElementById("miniMap").style.display = "none";
-    return;
-  }
+    /* =========================================================
+       現在利用中エリアUI更新
+       ========================================================= */
+    function updateCurrentArea(space) {
 
-  currentSelectedId = space.id;
+      if (!space) {
+        document.getElementById("currentInfo").innerHTML =
+          "利用中の駐車場はありません";
 
-  document.getElementById("currentInfo").innerHTML = `
+        if (miniMap) {
+          miniMap.remove();
+          miniMap = null;
+        }
+
+        document.getElementById("miniMap").style.display = "none";
+        return;
+      }
+
+      currentSelectedId = space.id;
+
+      document.getElementById("currentInfo").innerHTML = `
     <div style="font-family:sans-serif;">
       <h4 style="margin-bottom:8px;">${space.title}</h4>
 
@@ -337,422 +398,423 @@ function updateCurrentArea(space) {
     </div>
   `;
 
-  document.getElementById("miniMap").style.display = "block";
+      document.getElementById("miniMap").style.display = "block";
 
-  if (miniMap) {
-    miniMap.remove();
-  }
+      if (miniMap) {
+        miniMap.remove();
+      }
 
-  miniMap = L.map('miniMap')
-    .setView([space.latitude, space.longitude], 17);
+      miniMap = L.map('miniMap')
+        .setView([space.latitude, space.longitude], 17);
 
-  L.tileLayer(
-    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
-  ).addTo(miniMap);
+      L.tileLayer(
+        'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+      ).addTo(miniMap);
 
-  miniMarker = L.marker([space.latitude, space.longitude])
-    .addTo(miniMap);
-}
+      miniMarker = L.marker([space.latitude, space.longitude])
+        .addTo(miniMap);
+    }
 
-/* =========================================================
-   利用記録テーブルへの書き込み
-   ========================================================= */
-async function recordUsage(parkingId) {
-  console.log("利用記録追加:", parkingId);
+    /* =========================================================
+       利用記録テーブルへの書き込み
+       ========================================================= */
+    async function recordUsage(parkingId) {
+      console.log("利用記録追加:", parkingId);
 
-  // 予約されていない場合は中止
-  if (!currentSelectedId || currentSelectedId !== parkingId) {
-    alert('まず予約してください。');
-    return;
-  }
+      // 予約されていない場合は中止
+      if (!currentSelectedId || currentSelectedId !== parkingId) {
+        alert('まず予約してください。');
+        return;
+      }
 
-  // 既に記録済みなら処理中止
-  if (usageRecorded) {
-    console.log("既に利用記録済みです");
-    return;
-  }
+      // 既に記録済みなら処理中止
+      if (usageRecorded) {
+        console.log("既に利用記録済みです");
+        return;
+      }
 
-  // モーダルを表示
-  currentParkingId = parkingId;
-  document.getElementById('carNumberModal').style.display = 'block';
-}
+      // モーダルを表示
+      currentParkingId = parkingId;
+      document.getElementById('carNumberModal').style.display = 'block';
+    }
 
-/* =========================================================
-   利用終了を parking_usage に記録
-   ========================================================= */
-async function recordUsageEnd(parkingId) {
-  console.log("利用終了記録:", parkingId);
+    /* =========================================================
+       利用終了を parking_usage に記録
+       ========================================================= */
+    async function recordUsageEnd(parkingId) {
+      console.log("利用終了記録:", parkingId);
 
-  if (!usageRecorded) {
-    console.log("利用開始記録がありません");
-    return;
-  }
+      if (!usageRecorded) {
+        console.log("利用開始記録がありません");
+        return;
+      }
 
-  // 最新の未完了レコードを取得
-  let query = sb
-    .from('parking_usage')
-    .select('id')
-    .eq('parking_id', parkingId)
-    .is('ended_at', null)
-    .order('used_at', { ascending: false })
-    .limit(1);
+      // 最新の未完了レコードを取得
+      let query = sb
+        .from('parking_usage')
+        .select('id')
+        .eq('parking_id', parkingId)
+        .is('ended_at', null)
+        .order('used_at', { ascending: false })
+        .limit(1);
 
-  // ユーザーIDでフィルタ（認証されている場合のみ）
-  const user = await sb.auth.getUser();
-  console.log('recordUsageEnd: parkingId=', parkingId, 'user=', user);
-  if (user && user.data && user.data.user && user.data.user.id) {
-    query = query.eq('user_id', user.data.user.id);
-  } else {
-    query = query.is('user_id', null);
-  }
+      // ユーザーIDでフィルタ（認証されている場合のみ）
+      const user = await sb.auth.getUser();
+      console.log('recordUsageEnd: parkingId=', parkingId, 'user=', user);
+      if (user && user.data && user.data.user && user.data.user.id) {
+        query = query.eq('user_id', user.data.user.id);
+      } else {
+        query = query.is('user_id', null);
+      }
 
-  const { data: records, error: queryError } = await query;
-  console.log('records:', records, 'error:', queryError);
+      const { data: records, error: queryError } = await query;
+      console.log('records:', records, 'error:', queryError);
 
-  if (queryError) {
-    console.error('recordUsageEnd query error', queryError);
-    alert('利用終了記録の保存中にエラーが発生しました');
-    return;
-  }
+      if (queryError) {
+        console.error('recordUsageEnd query error', queryError);
+        alert('利用終了記録の保存中にエラーが発生しました');
+        return;
+      }
 
-  if (!records || records.length === 0) {
-    alert('利用開始記録が見つかりません');
-    return;
-  }
+      if (!records || records.length === 0) {
+        alert('利用開始記録が見つかりません');
+        return;
+      }
 
-  const recordId = records[0].id;
+      const recordId = records[0].id;
 
-  // 利用終了時刻を記録
-  const { data, error } = await sb
-    .from('parking_usage')
-    .update({ ended_at: new Date().toISOString() })
-    .eq('id', recordId);
+      // 利用終了時刻を記録
+      const { data, error } = await sb
+        .from('parking_usage')
+        .update({ ended_at: new Date().toISOString() })
+        .eq('id', recordId);
 
-  if (error) {
-    console.error('recordUsageEnd error', error);
-    alert('利用終了記録の保存中にエラーが発生しました');
-    return;
-  }
+      if (error) {
+        console.error('recordUsageEnd error', error);
+        alert('利用終了記録の保存中にエラーが発生しました');
+        return;
+      }
 
-  console.log('利用終了記録保存完了', data);
+      console.log('利用終了記録保存完了', data);
 
-  // 駐車場を利用可能に戻す
-  const { error: updateError } = await sb
-    .from('parking_spaces')
-    .update({
-      is_available: true,
-      rented_by: null
-    })
-    .eq('id', parkingId);
+      // 駐車場を利用可能に戻す
+      const { error: updateError } = await sb
+        .from('parking_spaces')
+        .update({
+          is_available: true,
+          rented_by: null
+        })
+        .eq('id', parkingId);
 
-  if (updateError) {
-    console.error('駐車場更新エラー', updateError);
-    alert('駐車場の更新中にエラーが発生しました');
-    return;
-  }
+      if (updateError) {
+        console.error('駐車場更新エラー', updateError);
+        alert('駐車場の更新中にエラーが発生しました');
+        return;
+      }
 
-  usageRecorded = false;
-  currentSelectedId = null;
-  await loadParking(); // UI を再レンダリング
-}
+      usageRecorded = false;
+      currentSelectedId = null;
+      await loadParking(); // UI を再レンダリング
+    }
 
-/* =========================================================
-   地図移動後に再取得
-   ========================================================= */
+    /* =========================================================
+       地図移動後に再取得
+       ========================================================= */
     map.on("moveend", () => {
       loadParking();
     });
 
     /* 初期ロード */
     loadParking();
+    showMyLocation();
+    /* =========================================================
+       Realtime更新監視
+       ========================================================= */
+    sb.channel('parking-channel')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'parking_spaces' },
+        (payload) => {
 
-/* =========================================================
-   Realtime更新監視
-   ========================================================= */
-sb.channel('parking-channel')
-  .on(
-    'postgres_changes',
-    { event: 'UPDATE', schema: 'public', table: 'parking_spaces' },
-    (payload) => {
+          const newRow = payload.new;
+          const bounds = map.getBounds();
 
-      const newRow = payload.new;
-      const bounds = map.getBounds();
+          if (
+            newRow.latitude >= bounds.getSouth() &&
+            newRow.latitude <= bounds.getNorth() &&
+            newRow.longitude >= bounds.getWest() &&
+            newRow.longitude <= bounds.getEast()
+          ) {
+            loadParking();
+          }
+        }
+      )
+      .subscribe();
 
-      if (
-        newRow.latitude >= bounds.getSouth() &&
-        newRow.latitude <= bounds.getNorth() &&
-        newRow.longitude >= bounds.getWest() &&
-        newRow.longitude <= bounds.getEast()
-      ) {
-        loadParking();
+    /* =========================================================
+       利用処理
+       ========================================================= */
+    async function useParking(id) {
+
+      console.log("利用開始:", id);
+
+      if (currentSelectedId) {
+        console.log("すでに利用中");
+        return;
       }
-    }
-  )
-  .subscribe();
 
-/* =========================================================
-   利用処理
-   ========================================================= */
-async function useParking(id) {
+      const { data, error } = await sb
+        .from("parking_spaces")
+        .update({
+          is_available: false,
+          rented_by: myUserId
+        })
+        .eq("id", id)
+        .eq("is_available", true)
+        .select();
 
-  console.log("利用開始:", id);
+      console.log("更新結果:", data);
+      console.log("エラー:", error);
 
-  if (currentSelectedId) {
-    console.log("すでに利用中");
-    return;
-  }
+      if (error) {
+        alert("エラーが発生しました");
+        return;
+      }
 
-  const { data, error } = await sb
-    .from("parking_spaces")
-    .update({
-      is_available: false,
-      rented_by: myUserId
-    })
-    .eq("id", id)
-    .eq("is_available", true)
-    .select();
+      if (!data || data.length === 0) {
+        alert("すでに利用されています");
+        return;
+      }
 
-  console.log("更新結果:", data);
-  console.log("エラー:", error);
+      currentSelectedId = id;
 
-  if (error) {
-    alert("エラーが発生しました");
-    return;
-  }
-
-  if (!data || data.length === 0) {
-    alert("すでに利用されています");
-    return;
-  }
-
-  currentSelectedId = id;
-
-  await loadParking();
-}
-
-/* =========================================================
-   キャンセル処理
-   ========================================================= */
-async function cancelParking(id) {
-
-  currentSelectedId = null;
-  usageRecorded = false;
-
-  await sb
-    .from("parking_spaces")
-    .update({
-      is_available: true,
-      rented_by: null
-    })
-    .eq("id", id)
-    .eq("rented_by", myUserId);
-
-  loadParking();
-}
-
-/* =========================================================
-   Googleマップ起動
-   ========================================================= */
-function openGoogleMap(lat, lng) {
-  const url = `https://www.google.com/maps?q=${lat},${lng}`;
-  window.open(url, "_blank");
-}
-
-/* =========================================================
-   モーダル関連関数
-   ========================================================= */
-document.addEventListener('DOMContentLoaded', function() {
-  // 分類番号：数字のみ
-  document.getElementById('classNumber').addEventListener('input', function(e) {
-    e.target.value = e.target.value.replace(/[^0-9]/g, '');
-  });
-
-  // 一連指定番号：数字と「-」のみ
-  document.getElementById('serialNumber').addEventListener('input', function(e) {
-    e.target.value = e.target.value.replace(/[^0-9\-]/g, '');
-  });
-
-  document.getElementById('carNumberForm').addEventListener('submit', async function(e) {
-    e.preventDefault();
-
-    const region = document.getElementById('region').value.trim();
-    const classNumber = document.getElementById('classNumber').value.trim();
-    const kana = document.getElementById('kana').value.trim();
-    const serialNumber = document.getElementById('serialNumber').value.trim();
-
-    if (!region || !classNumber || !kana || !serialNumber) {
-      alert('全ての項目を入力してください。');
-      return;
+      await loadParking();
     }
 
-    const carNumber = `${region} ${classNumber} ${kana} ${serialNumber}`;
+    /* =========================================================
+       キャンセル処理
+       ========================================================= */
+    async function cancelParking(id) {
 
-    console.log('保存開始: parking_id=', currentParkingId, 'car_number=', carNumber);
+      currentSelectedId = null;
+      usageRecorded = false;
 
-    // モーダルを閉じる
-    closeModal();
+      await sb
+        .from("parking_spaces")
+        .update({
+          is_available: true,
+          rented_by: null
+        })
+        .eq("id", id)
+        .eq("rented_by", myUserId);
 
-    // 既に記録済みなら処理中止
-    if (usageRecorded) {
-      return;
+      loadParking();
     }
 
-    // 即座にロック（並行実行を防ぐ）
-    usageRecorded = true;
-
-    // Supabase authユーザーがある場合のみ user_id を設定
-    let payload = { parking_id: currentParkingId, car_number: carNumber };
-    const user = await sb.auth.getUser();
-    if (user && user.data && user.data.user && user.data.user.id) {
-      payload.user_id = user.data.user.id;
+    /* =========================================================
+       Googleマップ起動
+       ========================================================= */
+    function openGoogleMap(lat, lng) {
+      const url = `https://www.google.com/maps?q=${lat},${lng}`;
+      window.open(url, "_blank");
     }
 
-    console.log('payload:', payload);
+    /* =========================================================
+       モーダル関連関数
+       ========================================================= */
+    document.addEventListener('DOMContentLoaded', function () {
+      // 分類番号：数字のみ
+      document.getElementById('classNumber').addEventListener('input', function (e) {
+        e.target.value = e.target.value.replace(/[^0-9]/g, '');
+      });
 
-    const { data, error } = await sb
-      .from('parking_usage')
-      .insert(payload);
+      // 一連指定番号：数字と「-」のみ
+      document.getElementById('serialNumber').addEventListener('input', function (e) {
+        e.target.value = e.target.value.replace(/[^0-9\-]/g, '');
+      });
 
-    console.log('insert result:', data, error);
+      document.getElementById('carNumberForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
 
-    if (error) {
-      console.error('recordUsage error', error);
-      alert('利用記録の保存中にエラーが発生しました: ' + error.message);
-      usageRecorded = false; // エラー時はロック解除
-      return;
+        const region = document.getElementById('region').value.trim();
+        const classNumber = document.getElementById('classNumber').value.trim();
+        const kana = document.getElementById('kana').value.trim();
+        const serialNumber = document.getElementById('serialNumber').value.trim();
+
+        if (!region || !classNumber || !kana || !serialNumber) {
+          alert('全ての項目を入力してください。');
+          return;
+        }
+
+        const carNumber = `${region} ${classNumber} ${kana} ${serialNumber}`;
+
+        console.log('保存開始: parking_id=', currentParkingId, 'car_number=', carNumber);
+
+        // モーダルを閉じる
+        closeModal();
+
+        // 既に記録済みなら処理中止
+        if (usageRecorded) {
+          return;
+        }
+
+        // 即座にロック（並行実行を防ぐ）
+        usageRecorded = true;
+
+        // Supabase authユーザーがある場合のみ user_id を設定
+        let payload = { parking_id: currentParkingId, car_number: carNumber };
+        const user = await sb.auth.getUser();
+        if (user && user.data && user.data.user && user.data.user.id) {
+          payload.user_id = user.data.user.id;
+        }
+
+        console.log('payload:', payload);
+
+        const { data, error } = await sb
+          .from('parking_usage')
+          .insert(payload);
+
+        console.log('insert result:', data, error);
+
+        if (error) {
+          console.error('recordUsage error', error);
+          alert('利用記録の保存中にエラーが発生しました: ' + error.message);
+          usageRecorded = false; // エラー時はロック解除
+          return;
+        }
+
+        console.log('利用記録保存完了', data);
+        await loadParking(); // UI を再レンダリング
+      });
+    });
+
+    function closeModal() {
+      document.getElementById('carNumberModal').style.display = 'none';
+      document.getElementById('carNumberForm').reset();
     }
 
-    console.log('利用記録保存完了', data);
-    await loadParking(); // UI を再レンダリング
-  });
-});
+  </script>
 
-function closeModal() {
-  document.getElementById('carNumberModal').style.display = 'none';
-  document.getElementById('carNumberForm').reset();
-}
-
-</script>
-
-<!-- モーダルダイアログ -->
-<div id="carNumberModal">
-  <div class="modal-content">
-    <h3>車のナンバープレートを入力してください</h3>
-    <form id="carNumberForm">
-      <label>地域名:</label>
-      <small style="color: #999;">例：東京、大阪など</small><br>
-      <select id="region" required>
-        <option value="">選択してください</option>
-        <option value="北海道">北海道</option>
-        <option value="青森">青森</option>
-        <option value="岩手">岩手</option>
-        <option value="宮城">宮城</option>
-        <option value="秋田">秋田</option>
-        <option value="山形">山形</option>
-        <option value="福島">福島</option>
-        <option value="茨城">茨城</option>
-        <option value="栃木">栃木</option>
-        <option value="群馬">群馬</option>
-        <option value="埼玉">埼玉</option>
-        <option value="千葉">千葉</option>
-        <option value="東京">東京</option>
-        <option value="神奈川">神奈川</option>
-        <option value="新潟">新潟</option>
-        <option value="富山">富山</option>
-        <option value="石川">石川</option>
-        <option value="福井">福井</option>
-        <option value="山梨">山梨</option>
-        <option value="長野">長野</option>
-        <option value="岐阜">岐阜</option>
-        <option value="静岡">静岡</option>
-        <option value="愛知">愛知</option>
-        <option value="三重">三重</option>
-        <option value="滋賀">滋賀</option>
-        <option value="京都">京都</option>
-        <option value="大阪">大阪</option>
-        <option value="兵庫">兵庫</option>
-        <option value="奈良">奈良</option>
-        <option value="和歌山">和歌山</option>
-        <option value="鳥取">鳥取</option>
-        <option value="島根">島根</option>
-        <option value="岡山">岡山</option>
-        <option value="広島">広島</option>
-        <option value="山口">山口</option>
-        <option value="徳島">徳島</option>
-        <option value="香川">香川</option>
-        <option value="愛媛">愛媛</option>
-        <option value="高知">高知</option>
-        <option value="福岡">福岡</option>
-        <option value="佐賀">佐賀</option>
-        <option value="長崎">長崎</option>
-        <option value="熊本">熊本</option>
-        <option value="大分">大分</option>
-        <option value="宮崎">宮崎</option>
-        <option value="鹿児島">鹿児島</option>
-        <option value="沖縄">沖縄</option>
-      </select><br><br>
-      <label>分類番号:</label>
-      <small style="color: #999;">例：123（普通乗用車の場合）</small><br>
-      <input type="text" id="classNumber" placeholder="123" inputmode="numeric" required><br><br>
-      <label>③かな文字:</label>
-      <small style="color: #999;">例：あ、い、うなど（1文字）</small><br>
-      <select id="kana" required>
-        <option value="">選択してください</option>
-        <option value="あ">あ</option>
-        <option value="い">い</option>
-        <option value="う">う</option>
-        <option value="え">え</option>
-        <option value="お">お</option>
-        <option value="か">か</option>
-        <option value="き">き</option>
-        <option value="く">く</option>
-        <option value="け">け</option>
-        <option value="こ">こ</option>
-        <option value="さ">さ</option>
-        <option value="し">し</option>
-        <option value="す">す</option>
-        <option value="せ">せ</option>
-        <option value="そ">そ</option>
-        <option value="た">た</option>
-        <option value="ち">ち</option>
-        <option value="つ">つ</option>
-        <option value="て">て</option>
-        <option value="と">と</option>
-        <option value="な">な</option>
-        <option value="に">に</option>
-        <option value="ぬ">ぬ</option>
-        <option value="ね">ね</option>
-        <option value="の">の</option>
-        <option value="は">は</option>
-        <option value="ひ">ひ</option>
-        <option value="ふ">ふ</option>
-        <option value="へ">へ</option>
-        <option value="ほ">ほ</option>
-        <option value="ま">ま</option>
-        <option value="み">み</option>
-        <option value="む">む</option>
-        <option value="め">め</option>
-        <option value="も">も</option>
-        <option value="や">や</option>
-        <option value="ゆ">ゆ</option>
-        <option value="よ">よ</option>
-        <option value="ら">ら</option>
-        <option value="り">り</option>
-        <option value="る">る</option>
-        <option value="れ">れ</option>
-        <option value="ろ">ろ</option>
-        <option value="わ">わ</option>
-        <option value="を">を</option>
-        <option value="ん">ん</option>
-      </select><br><br>
-      <label>④一連指定番号:</label>
-      <small style="color: #999;">例：1234（4ケタの数字）</small><br>
-      <input type="text" id="serialNumber" placeholder="1234" required><br><br>
-      <button type="submit">保存</button>
-      <button type="button" onclick="closeModal()">キャンセル</button>
-    </form>
+  <!-- モーダルダイアログ -->
+  <div id="carNumberModal">
+    <div class="modal-content">
+      <h3>車のナンバープレートを入力してください</h3>
+      <form id="carNumberForm">
+        <label>地域名:</label>
+        <small style="color: #999;">例：東京、大阪など</small><br>
+        <select id="region" required>
+          <option value="">選択してください</option>
+          <option value="北海道">北海道</option>
+          <option value="青森">青森</option>
+          <option value="岩手">岩手</option>
+          <option value="宮城">宮城</option>
+          <option value="秋田">秋田</option>
+          <option value="山形">山形</option>
+          <option value="福島">福島</option>
+          <option value="茨城">茨城</option>
+          <option value="栃木">栃木</option>
+          <option value="群馬">群馬</option>
+          <option value="埼玉">埼玉</option>
+          <option value="千葉">千葉</option>
+          <option value="東京">東京</option>
+          <option value="神奈川">神奈川</option>
+          <option value="新潟">新潟</option>
+          <option value="富山">富山</option>
+          <option value="石川">石川</option>
+          <option value="福井">福井</option>
+          <option value="山梨">山梨</option>
+          <option value="長野">長野</option>
+          <option value="岐阜">岐阜</option>
+          <option value="静岡">静岡</option>
+          <option value="愛知">愛知</option>
+          <option value="三重">三重</option>
+          <option value="滋賀">滋賀</option>
+          <option value="京都">京都</option>
+          <option value="大阪">大阪</option>
+          <option value="兵庫">兵庫</option>
+          <option value="奈良">奈良</option>
+          <option value="和歌山">和歌山</option>
+          <option value="鳥取">鳥取</option>
+          <option value="島根">島根</option>
+          <option value="岡山">岡山</option>
+          <option value="広島">広島</option>
+          <option value="山口">山口</option>
+          <option value="徳島">徳島</option>
+          <option value="香川">香川</option>
+          <option value="愛媛">愛媛</option>
+          <option value="高知">高知</option>
+          <option value="福岡">福岡</option>
+          <option value="佐賀">佐賀</option>
+          <option value="長崎">長崎</option>
+          <option value="熊本">熊本</option>
+          <option value="大分">大分</option>
+          <option value="宮崎">宮崎</option>
+          <option value="鹿児島">鹿児島</option>
+          <option value="沖縄">沖縄</option>
+        </select><br><br>
+        <label>分類番号:</label>
+        <small style="color: #999;">例：123（普通乗用車の場合）</small><br>
+        <input type="text" id="classNumber" placeholder="123" inputmode="numeric" required><br><br>
+        <label>③かな文字:</label>
+        <small style="color: #999;">例：あ、い、うなど（1文字）</small><br>
+        <select id="kana" required>
+          <option value="">選択してください</option>
+          <option value="あ">あ</option>
+          <option value="い">い</option>
+          <option value="う">う</option>
+          <option value="え">え</option>
+          <option value="お">お</option>
+          <option value="か">か</option>
+          <option value="き">き</option>
+          <option value="く">く</option>
+          <option value="け">け</option>
+          <option value="こ">こ</option>
+          <option value="さ">さ</option>
+          <option value="し">し</option>
+          <option value="す">す</option>
+          <option value="せ">せ</option>
+          <option value="そ">そ</option>
+          <option value="た">た</option>
+          <option value="ち">ち</option>
+          <option value="つ">つ</option>
+          <option value="て">て</option>
+          <option value="と">と</option>
+          <option value="な">な</option>
+          <option value="に">に</option>
+          <option value="ぬ">ぬ</option>
+          <option value="ね">ね</option>
+          <option value="の">の</option>
+          <option value="は">は</option>
+          <option value="ひ">ひ</option>
+          <option value="ふ">ふ</option>
+          <option value="へ">へ</option>
+          <option value="ほ">ほ</option>
+          <option value="ま">ま</option>
+          <option value="み">み</option>
+          <option value="む">む</option>
+          <option value="め">め</option>
+          <option value="も">も</option>
+          <option value="や">や</option>
+          <option value="ゆ">ゆ</option>
+          <option value="よ">よ</option>
+          <option value="ら">ら</option>
+          <option value="り">り</option>
+          <option value="る">る</option>
+          <option value="れ">れ</option>
+          <option value="ろ">ろ</option>
+          <option value="わ">わ</option>
+          <option value="を">を</option>
+          <option value="ん">ん</option>
+        </select><br><br>
+        <label>④一連指定番号:</label>
+        <small style="color: #999;">例：1234（4ケタの数字）</small><br>
+        <input type="text" id="serialNumber" placeholder="1234" required><br><br>
+        <button type="submit">保存</button>
+        <button type="button" onclick="closeModal()">キャンセル</button>
+      </form>
+    </div>
   </div>
-</div>
 
 </body>
+
 </html>
