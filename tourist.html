@@ -149,6 +149,7 @@
     let currentSelectedId = null;  // 現在利用中ID
     let overlayLayer = null;       // （未使用変数）
     let popupOpen = false;
+    let suppressMoveReload = false;
     let currentParkingId = null;   // 利用開始中の駐車場ID
     /* ユーザー識別ID（ローカル保存） */
     let myUserId = localStorage.getItem("myParkingUserId");
@@ -336,7 +337,18 @@
         </div>
       </div>
     `, {
-          autoPan: false
+          autoPan: true,
+          autoPanPadding: [80, 80]
+        });
+
+        marker.on("popupopen", () => {
+          suppressMoveReload = true;
+        });
+
+        marker.on("popupclose", () => {
+          setTimeout(() => {
+            suppressMoveReload = false;
+          }, 300);
         });
 
         markerGroup.addLayer(marker);
@@ -533,11 +545,17 @@
     let moveTimer = null;
 
     function debounceLoadParking() {
+
+      // ポップアップ表示中は再読み込みしない
+      if (suppressMoveReload) {
+        return;
+      }
+
       clearTimeout(moveTimer);
 
       moveTimer = setTimeout(() => {
         loadParking();
-      }, 500);   // 0.5秒待つ
+      }, 500);
     }
     map.on("moveend", debounceLoadParking);
 
