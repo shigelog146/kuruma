@@ -208,14 +208,30 @@
             .bindPopup("現在地")
             .openPopup();
 
-          // 初回だけズーム寄せる（UX改善）
+          // 初回だけ現在地＋駐車場全体を表示
           if (firstLoad) {
 
-            firstLoad = false;
+            // 現在地を配列へ追加
+            let boundsList = [[lat, lng]];
 
-            map.setView([lat, lng], 15, {
+            // 駐車場マーカーを全部取得
+            markerGroup.eachLayer(layer => {
+
+              if (layer.getLatLng) {
+
+                const pos = layer.getLatLng();
+
+                boundsList.push([pos.lat, pos.lng]);
+              }
+            });
+
+            // 全体表示
+            map.fitBounds(boundsList, {
+              padding: [50, 50],
               animate: false
             });
+
+            firstLoad = false;
           }
 
         },
