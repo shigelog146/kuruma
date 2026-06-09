@@ -24,6 +24,10 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
   <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
 
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-gesture-handling/dist/leaflet-gesture-handling.min.css">
+
+  <script src="https://unpkg.com/leaflet-gesture-handling"></script>
+
   <style>
     /* ==============================
        全体レイアウト
@@ -167,7 +171,9 @@
     let map = L.map('map', {
       zoomAnimation: false,
       fadeAnimation: false,
-      markerZoomAnimation: false
+      markerZoomAnimation: false,
+
+      gestureHandling: true
     }).setView([35.0, 135.0], 14);
     /* =========================================================
        現在地表示（赤ピン）
