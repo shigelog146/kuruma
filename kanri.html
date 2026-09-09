@@ -157,7 +157,8 @@
             .eq("id", id);
 
           if (error) {
-            alert("削除に失敗しました");
+            console.error("削除エラー詳細:", error);
+            alert("削除に失敗しました: " + error.message);
           } else {
             alert("削除しました");
             loadList(); // 再読込
